@@ -42,7 +42,7 @@ import org.eclipse.lemminx.extensions.contentmodel.settings.XMLSchemaSettings;
 import org.eclipse.lemminx.extensions.contentmodel.settings.XMLValidationSettings;
 import org.eclipse.lemminx.extensions.xerces.ReferencedGrammarDiagnosticsInfo;
 import org.eclipse.lemminx.services.extensions.diagnostics.LSPContentHandler;
-import org.eclipse.lemminx.uriresolver.CacheResourceException;
+import org.eclipse.lemminx.uriresolver.CacheResourceDownloadingException;
 import org.eclipse.lemminx.uriresolver.IExternalGrammarLocationProvider;
 import org.eclipse.lemminx.utils.StringUtils;
 import org.eclipse.lemminx.utils.XMLPositionUtility;
@@ -67,9 +67,7 @@ public class XMLValidator {
 	public static void doDiagnostics(DOMDocument document, XMLEntityResolver entityResolver,
 			List<Diagnostic> diagnostics, XMLValidationSettings validationSettings,
 			ContentModelManager contentModelManager, CancelChecker monitor) {
-
-		LSPXMLGrammarPool pool = contentModelManager.getGrammarPool();
-		LSPXMLGrammarPoolWrapper grammarPool = pool != null ? new LSPXMLGrammarPoolWrapper(pool) : null;
+		LSPXMLGrammarPool grammarPool = contentModelManager.getGrammarPool();
 		Map<String, ReferencedGrammarDiagnosticsInfo> referencedGrammarDiagnosticsInfoCache = new HashMap<>();
 		final LSPErrorReporterForXML reporterForXML = new LSPErrorReporterForXML(document, diagnostics,
 				contentModelManager, validationSettings != null ? validationSettings.isRelatedInformation() : false,
@@ -81,18 +79,15 @@ public class XMLValidator {
 		final LSPErrorReporterForXML reporterForGrammar = new LSPErrorReporterForXML(document, diagnostics,
 				contentModelManager, validationSettings != null ? validationSettings.isRelatedInformation() : false,
 				referencedGrammarDiagnosticsInfoCache);
-		LSPXMLEntityManager entityManager = new LSPXMLEntityManager(reporterForXML, grammarPool);
 		try {
-
 			LSPXMLParserConfiguration configuration = new LSPXMLParserConfiguration(grammarPool,
-					isDisableOnlyDTDValidation(document), reporterForXML, reporterForGrammar, entityManager,
-					validationSettings);
+					isDisableOnlyDTDValidation(document), reporterForXML, reporterForGrammar, validationSettings);
 
 			if (entityResolver != null) {
 				configuration.setProperty("http://apache.org/xml/properties/internal/entity-resolver", entityResolver); //$NON-NLS-1$
 			}
 
-			SAXParser parser = new LSPSAXParser(reporterForXML, configuration, grammarPool, document);
+			SAXParser parser = new LSPSAXParser(reporterForXML, configuration, grammarPool);
 
 			// Add LSP content handler to stop XML parsing if monitor is canceled.
 			parser.setContentHandler(new LSPContentHandler(monitor));
@@ -128,16 +123,13 @@ public class XMLValidator {
 			parseXML(content, uri, parser);
 		} catch (IOException | SAXException | CancellationException exception) {
 			// ignore error
-		} catch (CacheResourceException e) {
+		} catch (CacheResourceDownloadingException e) {
 			throw e;
 		} catch (Exception e) {
 			LOGGER.log(Level.SEVERE, "Unexpected XMLValidator error", e);
 		} finally {
 			reporterForXML.endReport();
 			reporterForGrammar.endReport();
-			// remove DTD grammars cache which are not completely loaded (because of some
-			// downloading of included DTD which is not finished)
-			entityManager.dispose();
 		}
 	}
 
